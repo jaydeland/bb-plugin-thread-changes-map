@@ -1,10 +1,10 @@
-# bb-plugin-system-map
+# bb-plugin-thread-changes-map
 
 A bb plugin that gives a thread a live system design view. It starts a
 hidden mapper agent for the thread and draws the map it keeps with d3, in
 the thread's right panel and in a browser page.
 
-![System Map of the thread that built this plugin](docs/screenshot.png)
+![Thread Changes Map of the thread that built this plugin, with a flow playing](docs/screenshot.png)
 
 *The map of the bb thread that built this plugin, drawn by its own mapper
 agent while the thread worked.*
@@ -14,16 +14,16 @@ agent while the thread worked.*
 Requires bb 0.48 or later.
 
 ```
-bb plugin install git:github.com/jaydeland/bb-plugin-system-map@main
+bb plugin install git:github.com/jaydeland/bb-plugin-thread-changes-map@main
 ```
 
-bb builds the plugin on install. Every thread then has a **System Map** tab
+bb builds the plugin on install. Every thread then has a **Thread Changes Map** tab
 in its right panel.
 
 ## Use it
 
-1. Open a thread and select the **System Map** tab in the right panel.
-2. Click **Start system map**. The mapper explores the workspace, reads the
+1. Open a thread and select the **Thread Changes Map** tab in the right panel.
+2. Click **Start thread changes map**. The mapper explores the workspace, reads the
    thread's plan bar (`bb plan-progress show`) and plan files, and draws a
    first map in a minute or two.
 3. Keep working in the thread. The map changes after each turn, and during
@@ -39,15 +39,17 @@ The view is a whiteboard-style lane diagram:
   then any started step (indigo). Dashed: no plan steps. Dashed amber:
   assumed, not in the plan. A halo marks what the thread works on now;
   changed nodes pulse.
+- **Change tags**: NEW, CHANGED, IMPACTED (not edited, but the change
+  affects it), and REMOVED, from `git status` and `git diff`. No tag: not
+  changed.
 - **Flows**: pick a flow to follow a request hop by hop (Back, Pause, Next,
   Clear). The current hop is cyan, with its note in the hint bar.
 - **Details**: click a node or an edge for its decisions, plan steps, edges,
   and files.
 
-**Open in browser** shows the full view on its own page. In the side panel
-the progress block folds to one line and flows are a select.
+**Open in browser** shows the full view on its own page.
 
-From a terminal or an agent: `bb system-map start|status|refresh|show|stop`
+From a terminal or an agent: `bb thread-changes-map start|status|refresh|show|stop`
 (`--thread <id>` for another thread, `--json` for JSON).
 
 If the provider does not take an update note (for example, while it
@@ -63,7 +65,7 @@ enforce this: the mapper shares the thread's workspace and permission mode.
 
 ## Settings
 
-`bb plugin config system-map set <key> <value>`
+`bb plugin config thread-changes-map set <key> <value>`
 
 | Key | Default | Meaning |
 | --- | --- | --- |
@@ -74,7 +76,7 @@ enforce this: the mapper shares the thread's workspace and permission mode.
 
 ## Layout
 
-- `server.ts`: settings, the `system_map_apply` and `system_map_read` agent
+- `server.ts`: settings, the `thread_changes_map_apply` and `thread_changes_map_read` agent
   tools (mapper threads only), thread event wiring, RPC, HTTP routes for the
   browser page, and the CLI.
 - `src/model.ts`: the graph model (lanes, nodes, edges, flows, phases, steps),
@@ -99,10 +101,10 @@ bb plugin dev     # rebuild and reload on save
 ```
 
 The browser page is at
-`/api/v1/plugins/system-map/http/view?thread=<thread id>` on the bb server.
+`/api/v1/plugins/thread-changes-map/http/view?thread=<thread id>` on the bb server.
 It polls `/map` every 2 seconds and loads d3 from this plugin's
 `node_modules` (or from cdnjs when that is missing).
 
 Bump `MAPPER_SCHEMA` in `src/mapper.ts` when the tool schema or the mapper
 instructions change. A running mapper keeps the schema it started with, so
-`bb system-map start` replaces a mapper with an older schema and keeps the map.
+`bb thread-changes-map start` replaces a mapper with an older schema and keeps the map.

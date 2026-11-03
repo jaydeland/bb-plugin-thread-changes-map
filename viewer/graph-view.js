@@ -1,5 +1,5 @@
 // @ts-check
-// The System Map view: a lane diagram (columns of nodes, shared-service rows
+// The Thread Changes Map view: a lane diagram (columns of nodes, shared-service rows
 // below), a plan progress card, a hop-by-hop flow player, and a details bar.
 // Plain ESM with d3 passed in, so the bb side panel (bundled d3) and the
 // standalone browser page (served d3) share one source.
@@ -13,7 +13,21 @@ export const STATE_LABELS = {
   neutral: "No plan steps",
 };
 
-const HINT = "Choose a flow to follow a request hop by hop. Click a node or an edge for its decisions and plan steps.";
+/** Change tags: what this thread adds, edits, or affects. Stable and planned nodes have no tag. */
+const CHANGE_LABELS = /** @type {Record<string, string>} */ ({
+  new: "new",
+  changed: "changed",
+  impacted: "impacted, not changed",
+  removed: "removed",
+});
+
+const OUTLINE_LABELS = [
+  ["o-focus", "blue ring that fades in and out: the thread works here now"],
+  ["o-pulse", "cyan ring that grows 3 times: changed in the latest map version"],
+  ["o-hop", "cyan border: the current hop of the flow you follow"],
+  ["o-selected", "heavy border: the node you clicked"],
+];
+const HINT = "Choose a flow to follow a request hop by hop; Back, Pause, Next, and Clear then step through it. Click a node or an edge for its decisions and plan steps.";
 const HOP_MS = 1800;
 const LANE_PAD = 16;
 const LANE_HEADER = 58;
@@ -48,8 +62,6 @@ const STYLE = `
 .smv button:hover:not(:disabled) { border-color: var(--smv-node-line); }
 .smv button:disabled { opacity: 0.45; cursor: default; }
 .smv button[aria-pressed="true"] { border-color: var(--smv-cyan); box-shadow: inset 0 0 0 1px var(--smv-cyan); }
-.smv select { font: inherit; color: var(--smv-ink); background: var(--smv-card); border: 1px solid var(--smv-lane-line);
-  border-radius: 8px; padding: 4px 8px; min-width: 0; }
 .smv-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; padding: 18px 24px 4px; }
 .smv-head h1 { margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.01em; }
 .smv-live { display: inline-flex; align-items: center; gap: 8px; color: var(--smv-muted); }
@@ -84,14 +96,27 @@ const STYLE = `
 .smv-legend i.line { width: 22px; height: 0; border-radius: 0; border: 0; border-top: 2px solid var(--smv-edge); background: none; }
 .smv-legend i.assumed { border-top: 2px dashed var(--smv-amber); } .smv-legend i.hop { border-top-color: var(--smv-cyan); }
 .smv-legend em { font-style: normal; }
+.smv-legend b { font-size: 9px; font-weight: 700; letter-spacing: 0.06em; padding: 1px 6px; border-radius: 4px; border: 1.2px solid; }
+.smv-legend b.new { background: var(--smv-green); border-color: var(--smv-green); color: #fff; }
+.smv-legend b.changed { background: var(--smv-amber); border-color: var(--smv-amber); color: #1b1300; }
+.smv-legend b.impacted { border-color: var(--smv-muted); color: var(--smv-ink); }
+.smv-legend b.removed { border-color: var(--smv-red); color: var(--smv-red); }
+.smv-legend .row { flex-basis: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 18px; }
+.smv-legend .row > strong { font-weight: 600; color: var(--smv-ink); }
+.smv-legend i.o-focus { border-color: var(--smv-node-line); box-shadow: 0 0 0 2px var(--smv-card), 0 0 0 4px var(--smv-indigo); }
+.smv-legend i.o-pulse { border-color: var(--smv-node-line); box-shadow: 0 0 0 3px var(--smv-cyan); opacity: 0.8; }
+.smv-legend i.o-hop { border: 2.5px solid var(--smv-cyan); }
+.smv-legend i.o-selected { border: 2.5px solid var(--smv-ink); }
 .smv-handoff summary { cursor: pointer; }
 .smv-handoff pre { white-space: pre-wrap; font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--smv-muted);
   background: var(--smv-card); border: 1px solid var(--smv-lane-line); border-radius: 8px; padding: 10px 12px; max-height: 240px; overflow: auto; }
 .smv-flowbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-start; }
 .smv-chips { display: flex; flex-wrap: wrap; gap: 8px; flex: 1; min-width: 0; }
+.smv-chips button { border-radius: 999px; padding: 5px 14px; }
 .smv-controls { display: flex; gap: 6px; margin-left: auto; }
 .smv[data-mode="compact"] .smv-controls button { padding: 3px 8px; font-size: 12px; }
-.smv[data-mode="compact"] .smv-flowbar select { flex: 1; }
+.smv[data-mode="compact"] .smv-chips { flex-basis: 100%; gap: 6px; }
+.smv[data-mode="compact"] .smv-chips button { padding: 3px 10px; font-size: 12px; }
 .smv-hint { background: var(--smv-card); border: 1px solid var(--smv-lane-line); border-radius: 10px; padding: 10px 16px; min-height: 42px; }
 .smv[data-mode="compact"] .smv-hint { padding: 7px 10px; font-size: 12px; max-height: 34vh; overflow-y: auto; }
 .smv-hint h3 { margin: 0; font-size: 14px; } .smv-hint p { margin: 4px 0; } .smv-hint ul { margin: 4px 0; padding-left: 18px; }
@@ -115,6 +140,15 @@ const STYLE = `
 .smv-node.st-blocked .box { fill: var(--smv-red-fill); stroke: var(--smv-red); }
 .smv-node.st-none .box { stroke-dasharray: 5 4; }
 .smv-node.assumed .box { stroke: var(--smv-amber); stroke-dasharray: 6 4; }
+.smv-node .tag { display: none; }
+.smv-node .tag rect { stroke-width: 1.2; }
+.smv-node .tag text { font-size: 9px; font-weight: 700; letter-spacing: 0.06em; text-anchor: middle; }
+.smv-node.ch-new .tag, .smv-node.ch-changed .tag, .smv-node.ch-impacted .tag, .smv-node.ch-removed .tag { display: inline; }
+.smv-node.ch-new .tag rect { fill: var(--smv-green); stroke: var(--smv-green); } .smv-node.ch-new .tag text { fill: #fff; }
+.smv-node.ch-changed .tag rect { fill: var(--smv-amber); stroke: var(--smv-amber); } .smv-node.ch-changed .tag text { fill: #1b1300; }
+.smv-node.ch-impacted .tag rect { fill: var(--smv-card); stroke: var(--smv-muted); } .smv-node.ch-impacted .tag text { fill: var(--smv-ink); }
+.smv-node.ch-removed .tag rect { fill: var(--smv-card); stroke: var(--smv-red); } .smv-node.ch-removed .tag text { fill: var(--smv-red); }
+.smv-node.ch-removed .label { text-decoration: line-through; }
 .smv-node:hover .box, .smv-node:focus-visible .box { stroke-width: 2.5; }
 .smv-node.selected .box { stroke: var(--smv-ink); stroke-width: 2.5; }
 .smv-node .halo { fill: none; stroke: var(--smv-indigo); stroke-width: 2; opacity: 0; }
@@ -168,7 +202,7 @@ export function createGraphView(d3, container, options = {}) {
 
   // --- Chrome --------------------------------------------------------------
   const head = el("div", "smv-head");
-  const title = el("h1", "", "System map");
+  const title = el("h1", "", "Thread changes map");
   const live = el("span", "smv-live", "Loading");
   const meta = el("span", "smv-meta");
   head.append(title, live, meta);
@@ -182,8 +216,8 @@ export function createGraphView(d3, container, options = {}) {
   handoff.append(handoffSummary, handoffText);
   const flowbar = el("div", "smv-flowbar");
   const chips = el("div", "smv-chips");
-  const flowSelect = /** @type {HTMLSelectElement} */ (el("select"));
-  flowSelect.setAttribute("aria-label", "Follow a flow");
+  chips.setAttribute("role", "group");
+  chips.setAttribute("aria-label", "Follow a flow");
   const controls = el("div", "smv-controls");
   const backButton = /** @type {HTMLButtonElement} */ (el("button", "", "Back"));
   const pauseButton = /** @type {HTMLButtonElement} */ (el("button", "", "Pause"));
@@ -191,8 +225,13 @@ export function createGraphView(d3, container, options = {}) {
   const clearButton = /** @type {HTMLButtonElement} */ (el("button", "", "Clear"));
   const fitButton = /** @type {HTMLButtonElement} */ (el("button", "", "Fit"));
   for (const button of [backButton, pauseButton, nextButton, clearButton, fitButton]) button.type = "button";
+  backButton.title = "Go to the previous hop of the flow";
+  pauseButton.title = "Stop or start the automatic step through the flow";
+  nextButton.title = "Go to the next hop of the flow";
+  clearButton.title = "Stop following the flow";
+  fitButton.title = "Zoom to show the whole map";
   controls.append(backButton, pauseButton, nextButton, clearButton, fitButton);
-  flowbar.append(mode === "compact" ? flowSelect : chips, controls);
+  flowbar.append(chips, controls);
   const hint = el("div", "smv-hint");
   chrome.append(progressCard, handoff, flowbar, hint);
   root.append(chrome);
@@ -212,7 +251,7 @@ export function createGraphView(d3, container, options = {}) {
   }
 
   // --- SVG -----------------------------------------------------------------
-  const svg = d3.select(canvas).append("svg").attr("role", "img").attr("aria-label", "System map diagram");
+  const svg = d3.select(canvas).append("svg").attr("role", "img").attr("aria-label", "Thread changes map diagram");
   const defs = svg.append("defs");
   for (const [id, color] of [
     [`${uid}-arrow`, "var(--smv-edge)"],
@@ -259,7 +298,7 @@ export function createGraphView(d3, container, options = {}) {
   let width = 0;
   let height = 0;
   let lastVersion = -1;
-  let progressOpen = mode !== "compact";
+  let progressOpen = true;
   const memory = {
     /** @type {Map<string, number>} first-seen index per lane */
     laneSeen: new Map(),
@@ -605,6 +644,9 @@ export function createGraphView(d3, container, options = {}) {
           g.append("rect").attr("class", "box").attr("rx", 9);
           g.append("text").attr("class", "label");
           g.append("text").attr("class", "sub");
+          const tag = g.append("g").attr("class", "tag");
+          tag.append("rect").attr("rx", 4).attr("height", 15);
+          tag.append("text");
           g.append("title");
           g.on("click", (/** @type {any} */ event, /** @type {any} */ box) => {
             event.stopPropagation();
@@ -627,7 +669,13 @@ export function createGraphView(d3, container, options = {}) {
         g.attr("class", `smv-node st-${state}`)
           .classed("assumed", node.assumed)
           .classed("focus", focus.has(box.id))
-          .attr("aria-label", `${node.label}${node.subtitle ? `, ${node.subtitle}` : ""}, ${STATE_LABELS[/** @type {keyof typeof STATE_LABELS} */ (state)]}${node.assumed ? ", assumed" : ""}`);
+          .classed(`ch-${node.status}`, node.status in CHANGE_LABELS)
+          .attr("aria-label", `${node.label}${node.subtitle ? `, ${node.subtitle}` : ""}, ${STATE_LABELS[/** @type {keyof typeof STATE_LABELS} */ (state)]}${node.status in CHANGE_LABELS ? `, ${CHANGE_LABELS[node.status]}` : ""}${node.assumed ? ", assumed" : ""}`);
+        const tagText = node.status in CHANGE_LABELS ? node.status.toUpperCase() : "";
+        const tagWidth = tagText.length * 6.4 + 12;
+        g.select(".tag").attr("transform", `translate(${box.w - tagWidth - 8},-8)`);
+        g.select(".tag rect").attr("width", tagWidth);
+        g.select(".tag text").attr("x", tagWidth / 2).attr("y", 11).text(tagText);
         g.transition().duration(420).style("opacity", 1).attr("transform", `translate(${box.x},${box.y})`);
         g.select(".halo").attr("x", -5).attr("y", -5).attr("width", box.w + 10).attr("height", box.h + 10);
         g.select(".ring").attr("x", -3).attr("y", -3).attr("width", box.w + 6).attr("height", box.h + 6);
@@ -691,7 +739,7 @@ export function createGraphView(d3, container, options = {}) {
   function renderHeader() {
     if (!options.header || map === null) return;
     const graph = map.graph;
-    title.textContent = graph.title ?? "System map";
+    title.textContent = graph.title ?? "Thread changes map";
     live.dataset.state = map.state;
     const word = { starting: "starting", mapping: "mapping", idle: "live", sleeping: "sleeping", stopped: "stopped", error: "error" }[/** @type {"idle"} */ (map.state)] ?? map.state;
     live.textContent = graph.version > 0 ? `${word}, v${graph.version}` : word;
@@ -717,6 +765,23 @@ export function createGraphView(d3, container, options = {}) {
       box.append(item);
     }
     if (mode === "full") box.append(el("span", "", "Node fill: a blocked step wins, then all done, then any started step."));
+    const changes = el("div", "row");
+    changes.append(el("strong", "", "Change tags"));
+    for (const [status, text] of Object.entries(CHANGE_LABELS)) {
+      const item = el("span");
+      item.append(el("b", status, status.toUpperCase()), el("em", "", text));
+      changes.append(item);
+    }
+    changes.append(el("span", "", "No tag: not changed."));
+    box.append(changes);
+    const outlines = el("div", "row");
+    outlines.append(el("strong", "", "Outlines"));
+    for (const [className, text] of OUTLINE_LABELS) {
+      const item = el("span");
+      item.append(el("i", className), el("em", "", text));
+      outlines.append(item);
+    }
+    box.append(outlines);
     return box;
   }
 
@@ -790,13 +855,9 @@ export function createGraphView(d3, container, options = {}) {
         return chip;
       }),
     );
-    flowSelect.replaceChildren(new Option("Follow a flow…", ""), ...flows.map((/** @type {any} */ flow) => new Option(flow.name, flow.id)));
-    flowSelect.value = flowId ?? "";
     const active = flowId !== null;
-    backButton.disabled = !active;
-    nextButton.disabled = !active;
-    clearButton.disabled = !active;
-    pauseButton.disabled = !active;
+    // The hop controls only mean something while a flow plays.
+    for (const button of [backButton, pauseButton, nextButton, clearButton]) button.hidden = !active;
     pauseButton.textContent = paused ? "Play" : "Pause";
     fitButton.disabled = boxes.size === 0;
   }
@@ -1060,7 +1121,6 @@ export function createGraphView(d3, container, options = {}) {
     userMoved = false;
     fit(true);
   });
-  flowSelect.addEventListener("change", () => setFlow(flowSelect.value === "" ? null : flowSelect.value));
 
   function pulse(/** @type {Set<string>} */ ids) {
     if (ids.size === 0) return;

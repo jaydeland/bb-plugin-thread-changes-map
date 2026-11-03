@@ -1,5 +1,5 @@
 {
-  "name": "bb-plugin-system-map",
+  "name": "bb-plugin-thread-changes-map",
   "version": "0.1.0",
   "type": "module",
   "engines": {
@@ -7,8 +7,8 @@
     "bbPluginSdk": ">=0.6.94"
   },
   "bb": {
-    "name": "System Map",
-    "description": "Starts a background agent for a thread that maps the system it works on, and shows the live architecture and flow graph (d3) in a thread side panel and in a browser page.",
+    "name": "Thread Changes Map",
+    "description": "See what a thread's changes touch while it works: a live system diagram that tags each new, changed, and impacted part.",
     "branding": {
       "icon": "Workflow"
     },
@@ -57,7 +57,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/jaydeland/bb-plugin-system-map.git"
+    "url": "git+https://github.com/jaydeland/bb-plugin-thread-changes-map.git"
   },
   "scripts": {
     "build": "bb plugin build",

@@ -1,4 +1,4 @@
-// System Map: a hidden mapper agent per thread keeps a live architecture and
+// Thread Changes Map: a hidden mapper agent per thread keeps a live architecture and
 // flow graph. The side panel (app.tsx) and the browser page (/view) draw it.
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
@@ -137,15 +137,15 @@ export default async function plugin(bb: BbPluginApi) {
   // --- The mapper's tools -------------------------------------------------
 
   bb.agents.registerTool({
-    name: "system_map_apply",
+    name: "thread_changes_map_apply",
     description:
-      "Patch the live System Map: add, change, or remove nodes, edges, and flows, and set the focus. Atomic: on errors nothing changes.",
-    presentation: { label: { pending: "Updating the system map", completed: "Updated the system map" } },
+      "Patch the live Thread Changes Map: add, change, or remove nodes, edges, and flows, and set the focus. Atomic: on errors nothing changes.",
+    presentation: { label: { pending: "Updating the thread changes map", completed: "Updated the thread changes map" } },
     parameters: patchSchema,
     execute(patch, { threadId }) {
       const row = store.byMapper(threadId);
       if (row === null) {
-        return { content: [{ type: "text", text: "Only a System Map worker thread can change a map." }], isError: true };
+        return { content: [{ type: "text", text: "Only a Thread Changes Map worker thread can change a map." }], isError: true };
       }
       const result = applyPatch(row.graph, patch, Date.now());
       if (!result.ok) {
@@ -163,14 +163,14 @@ export default async function plugin(bb: BbPluginApi) {
   });
 
   bb.agents.registerTool({
-    name: "system_map_read",
-    description: "Read the current System Map as compact text: nodes, edges, flows, and focus.",
-    presentation: { label: { pending: "Reading the system map", completed: "Read the system map" }, suppress: true },
+    name: "thread_changes_map_read",
+    description: "Read the current Thread Changes Map as compact text: nodes, edges, flows, and focus.",
+    presentation: { label: { pending: "Reading the thread changes map", completed: "Read the thread changes map" }, suppress: true },
     parameters: z.object({}).strict(),
     execute(_params, { threadId }) {
       const row = store.byMapper(threadId);
       if (row === null) {
-        return { content: [{ type: "text", text: "Only a System Map worker thread can read its map." }], isError: true };
+        return { content: [{ type: "text", text: "Only a Thread Changes Map worker thread can read its map." }], isError: true };
       }
       return describeGraph(row.graph);
     },
@@ -178,8 +178,8 @@ export default async function plugin(bb: BbPluginApi) {
 
   bb.agents.configure((context) =>
     context.pluginMetadata.role === MAPPER_ROLE
-      ? { tools: ["system_map_apply", "system_map_read"], skills: [], instructions: MAPPER_INSTRUCTIONS }
-      : { tools: [], skills: ["system-map"] },
+      ? { tools: ["thread_changes_map_apply", "thread_changes_map_read"], skills: [], instructions: MAPPER_INSTRUCTIONS }
+      : { tools: [], skills: ["thread-changes-map"] },
   );
 
   // --- Thread events: the live part --------------------------------------
@@ -301,21 +301,21 @@ export default async function plugin(bb: BbPluginApi) {
           : { state: map.state, version: map.graph.version, nodes: map.graph.nodes.length, edges: map.graph.edges.length, mapperThreadId: map.mapperThreadId, error: map.error };
       return { exitCode: 0, stdout: `${JSON.stringify({ threadId, map: summary, url })}\n` };
     }
-    if (row === null) return { exitCode: 0, stdout: `No map for ${threadId}. Start one with: bb system-map start\n` };
+    if (row === null) return { exitCode: 0, stdout: `No map for ${threadId}. Start one with: bb thread-changes-map start\n` };
     const { graph } = row;
     const lines = [
-      `System map for ${threadId}: ${row.state}${row.error ? ` (${row.error})` : ""}`,
+      `Thread changes map for ${threadId}: ${row.state}${row.error ? ` (${row.error})` : ""}`,
       `Version ${graph.version}: ${graph.nodes.length} nodes, ${graph.edges.length} edges, ${graph.flows.length} flows`,
       `Mapper thread: ${row.mapperThreadId ?? "(none)"}`,
       `Browser view: ${url}`,
-      "Side panel: open the System Map tab in the thread's right panel.",
+      "Side panel: open the Thread Changes Map tab in the thread's right panel.",
     ];
     return { exitCode: 0, stdout: `${lines.join("\n")}\n` };
   }
 
   bb.cli.register(
     defineCli({
-      name: "system-map",
+      name: "thread-changes-map",
       summary: "Live architecture and flow map of a thread, kept by a background agent",
       commands: {
         start: cliCommand({

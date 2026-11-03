@@ -1,4 +1,4 @@
-// The system map: lanes of nodes, edges, named flows, and the plan steps that
+// The thread changes map: lanes of nodes, edges, named flows, and the plan steps that
 // say how far each part is. Changed only by validated, atomic patches. Pure
 // code (no bb imports) so `node --test` can run it.
 import { z } from "zod";
@@ -18,6 +18,7 @@ export const NODE_STATUSES = [
   "stable",
   "new",
   "changed",
+  "impacted",
   "planned",
   "problem",
   "removed",
@@ -150,7 +151,7 @@ const stepInputSchema = z
   })
   .strict();
 
-/** The `system_map_apply` tool's parameters. */
+/** The `thread_changes_map_apply` tool's parameters. */
 export const patchSchema = z
   .object({
     summary: z
@@ -573,6 +574,7 @@ const FALLBACK_STATES: Record<NodeStatus, NodeState> = {
   stable: "neutral",
   new: "in_progress",
   changed: "in_progress",
+  impacted: "neutral",
   planned: "todo",
   problem: "blocked",
   removed: "none",

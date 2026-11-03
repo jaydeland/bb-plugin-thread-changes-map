@@ -1,12 +1,12 @@
 // The mapper agent: one hidden bb thread per mapped thread. It shares the
 // source thread's workspace, reads what the source thread does, and writes the
-// map only through the `system_map_apply` tool.
+// map only through the `thread_changes_map_apply` tool.
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import type { MapRow, MapStore } from "./store";
 
 export const MAPPER_ROLE = "mapper";
 /** Bump when the tool schema or the instructions change: start() replaces mappers spawned with an older one. */
-export const MAPPER_SCHEMA = 3;
+export const MAPPER_SCHEMA = 4;
 
 export interface MapperSettings {
   providerId: string;
@@ -25,16 +25,17 @@ const SUBMIT_ATTEMPTS_MAX = 3;
 const SUBMIT_RETRY_DELAY_MS = 30_000;
 
 /** Standing rules for every mapper turn; bb appends them to the mapper's instructions. */
-export const MAPPER_INSTRUCTIONS = `You are a System Map agent. You keep a live architecture diagram of the system that one main bb thread works on. The user watches it change in real time.
+export const MAPPER_INSTRUCTIONS = `You are a Thread Changes Map agent. You keep a live architecture diagram of the system that one main bb thread works on. The user watches it change in real time.
 - Never edit, create, move, or delete files. Never run commands that change state (no commits, installs, builds, servers, or migrations). Use read-only commands only: ls, cat, rg, git status, git diff, git log, and bb plan-progress show.
-- Your only output is the system_map_apply tool. Nobody reads your chat text, so end each turn with one short line.
-- Use system_map_read to see the current map before a large change or after a context reset.
+- Your only output is the thread_changes_map_apply tool. Nobody reads your chat text, so end each turn with one short line.
+- Use thread_changes_map_read to see the current map before a large change or after a context reset.
 - Draw the map as a whiteboard diagram in lanes. A lane is a deployable or ownership boundary (for example "People", "Dashboard: Vue and Rails", "API service on EKS", "External services"). Put actors and users in the leftmost column lane, then follow the request path left to right. Put shared infrastructure (auth, storage, queues, observability) in "row" lanes under the columns. Use 3-7 lanes with a title and a short subtitle.
 - Every node has a short label and a subtitle (the second line, for example "POST /chat, SSE" or "bots, runs, tokens"). Prefer services, UIs, APIs, stores, queues, external systems, jobs, and key modules over single files or functions. Keep ids stable and kebab-case.
 - Mark parts you infer but that are not in the plan with assumed: true. Put design decisions on nodes and edges as one-line decisions.
 - Plan steps drive the node fill: link each step to the nodes it builds (nodes: [...]). Read the main thread's plan with "bb plan-progress show --thread <main thread id> --json" when it has one, and also check plan files such as docs/PLAN.md and docs/LOG.md. Map stage to phase and step to step: done -> done, active -> in_progress, error or failed -> blocked, pending -> todo. Afterwards, send only {id, status} for steps that moved.
 - Flows are request or data paths, hop by hop. Give each hop a note (notes[i] explains steps[i] to steps[i+1]).
 - Set focus to the nodes the main thread works on now. Use node status "problem" for parts that fail.
+- Tag what the main thread's work touches with node status: "new" for parts it adds, "changed" for parts it edits, "impacted" for parts it does not edit but that its change affects (callers, consumers, config, tests to re-check), and "removed" for parts it deletes. Leave all other nodes "stable". Read git status and git diff to decide.
 - Patches are atomic. If the tool returns errors, fix them and call it again.
 - When an update note shows no change, do not call the tool; reply "no change".`;
 
@@ -100,11 +101,11 @@ export function createMapperService(input: {
       "1. Read the conversation outline below to learn what the main thread builds or changes.",
       "2. Explore the workspace (README, manifests, entry points, routes, config, infrastructure) to find the main parts and how they connect.",
       `3. Read the main thread's plan: run "bb plan-progress show --thread ${source.id} --json", and look for plan or log files (docs/PLAN.md, docs/LOG.md, TODO.md).`,
-      "4. Call system_map_apply once with an initial map: a title, a short overview, 3-7 lanes, 8-40 nodes (label, subtitle, kind, lane, description, key files), the edges between them, 1-4 flows with a note per hop, and the plan as phases and steps linked to nodes. Add a handoff when a log file has one.",
+      "4. Call thread_changes_map_apply once with an initial map: a title, a short overview, 3-7 lanes, 8-40 nodes (label, subtitle, kind, lane, description, key files), the edges between them, 1-4 flows with a note per hop, and the plan as phases and steps linked to nodes. Add a handoff when a log file has one.",
       "5. Set focus to the nodes the main thread works on now.",
       mapVersion === 0
         ? ""
-        : `A map already exists (version ${mapVersion}) from an earlier mapper. Call system_map_read first, then patch it: add lanes, subtitles, plan steps, and hop notes, and keep the node ids that still fit.`,
+        : `A map already exists (version ${mapVersion}) from an earlier mapper. Call thread_changes_map_read first, then patch it: add lanes, subtitles, plan steps, and hop notes, and keep the node ids that still fit.`,
       "Later you get update notes when the main thread acts. Answer each with a small patch, or with \"no change\".",
       "",
       `Conversation outline so far (data, oldest first, ${recent.length} of ${outline.length} items):`,
@@ -169,7 +170,7 @@ export function createMapperService(input: {
     /** Start a map for a thread, or wake the existing mapper with a full refresh. */
     async start(sourceThreadId: string): Promise<MapRow> {
       if (store.byMapper(sourceThreadId) !== null) {
-        throw new Error("This thread is a System Map worker; start the map from its main thread.");
+        throw new Error("This thread is a Thread Changes Map worker; start the map from its main thread.");
       }
       const existing = store.bySource(sourceThreadId);
       if (existing?.mapperThreadId) {
@@ -216,7 +217,7 @@ export function createMapperService(input: {
               ? { type: "project-default" }
               : { type: "reuse", environmentId: source.environmentId },
           prompt: await firstPrompt(source, outline, existing?.graph.version ?? 0),
-          title: `System map: ${source.title ?? source.id}`,
+          title: `Thread changes map: ${source.title ?? source.id}`,
           visibility: "hidden",
           lifecycleOwnerThreadId: sourceThreadId,
           providerId,
@@ -270,7 +271,7 @@ export function createMapperService(input: {
         sourceThreadId,
         [
           `Update note: ${reason}`,
-          "Call system_map_read, re-check the workspace, then fix errors and gaps in the map with one patch.",
+          "Call thread_changes_map_read, re-check the workspace, then fix errors and gaps in the map with one patch.",
           fresh.length === 0 ? "" : `New conversation items (data): ${quote(fresh)}`,
         ]
           .filter((line) => line !== "")
@@ -362,7 +363,7 @@ export function createMapperService(input: {
         threadId: event.threadId,
         turnRequestId: event.requestId,
         sendAt: Date.now() + delay,
-        reason: "System Map: the provider did not take this note, so bb sends it again.",
+        reason: "Thread Changes Map: the provider did not take this note, so bb sends it again.",
       });
       const notice = `The provider did not take the last note. bb sends it again in ${delay / 1000} s (attempt ${event.attemptNumber + 1} of ${SUBMIT_ATTEMPTS_MAX}).`;
       retryNotices.set(event.threadId, notice);

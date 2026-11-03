@@ -136,3 +136,9 @@ test("an edge update without kind keeps the old kind", () => {
   const edge = graph.edges.find((candidate) => candidate.id === "api->db:writes");
   assert.deepEqual([edge?.kind, edge?.status, graph.edges.length], ["writes", "changed", 2]);
 });
+
+test("an impacted node keeps its tag and fills like a stable one", () => {
+  const graph = apply(base(), { summary: "api change touches web", upsertNodes: [{ id: "web", status: "impacted" }] });
+  assert.equal(graph.nodes.find((node) => node.id === "web")?.status, "impacted");
+  assert.equal(deriveView(graph).nodeStates.web, "neutral");
+});

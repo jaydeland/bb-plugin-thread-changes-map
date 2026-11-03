@@ -1,4 +1,4 @@
-// System Map side panel: a fixed tab in every thread's right panel. It starts
+// Thread Changes Map side panel: a fixed tab in every thread's right panel. It starts
 // the background mapper agent and mounts the shared view in compact mode.
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ReactNode, RefObject } from "react";
@@ -123,7 +123,7 @@ function Centered({ children }: { children: ReactNode }) {
   );
 }
 
-function SystemMapTab({ threadId }: ExperimentalThreadTabProps) {
+function ThreadChangesMapTab({ threadId }: ExperimentalThreadTabProps) {
   const pluginId = experimental_usePluginId();
   const { rpc, map, isMapper, error, setError, refetch } = useMap(threadId);
   const [busy, setBusy] = useState<"start" | "stop" | "refresh" | null>(null);
@@ -174,7 +174,7 @@ function SystemMapTab({ threadId }: ExperimentalThreadTabProps) {
     <div ref={probe} className="flex h-full min-h-0 flex-col bg-background text-foreground">
       <span data-probe="muted" className="hidden text-muted-foreground" />
       {isMapper ? (
-        <Centered>This is a System Map worker thread. Open the map from its main thread.</Centered>
+        <Centered>This is a Thread Changes Map worker thread. Open the map from its main thread.</Centered>
       ) : map === undefined ? (
         <Centered>{error ?? "Loading the map…"}</Centered>
       ) : map === null ? (
@@ -185,7 +185,7 @@ function SystemMapTab({ threadId }: ExperimentalThreadTabProps) {
             map updates while the thread works.
           </p>
           <Button size="sm" disabled={busy !== null} onClick={() => void run("start")}>
-            {busy === "start" ? "Starting…" : "Start system map"}
+            {busy === "start" ? "Starting…" : "Start thread changes map"}
           </Button>
           {error ? <p className="text-destructive">{error}</p> : null}
         </Centered>
@@ -194,7 +194,7 @@ function SystemMapTab({ threadId }: ExperimentalThreadTabProps) {
           <div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2">
             <StatusChip map={map} />
             <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground" title={latest?.summary}>
-              {map.graph.title ?? "System map"}
+              {map.graph.title ?? "Thread changes map"}
               {latest ? ` · ${latest.summary}` : ""}
             </span>
             {live ? (
@@ -230,11 +230,11 @@ export default definePluginApp((app) => {
   app.slots.experimental_tab({
     context: { kind: "thread" },
     availability: "fixed",
-    id: "system-map",
-    title: "System Map",
+    id: "thread-changes-map",
+    title: "Thread Changes Map",
     icon: "Workflow",
     tooltip: "Live architecture and flow map, kept by a background agent",
     layout: "flush",
-    component: SystemMapTab,
+    component: ThreadChangesMapTab,
   });
 });
