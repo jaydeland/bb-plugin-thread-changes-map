@@ -22,8 +22,8 @@ const CHANGE_LABELS = /** @type {Record<string, string>} */ ({
 });
 
 const OUTLINE_LABELS = [
-  ["o-focus", "blue ring that fades in and out: the thread works here now"],
-  ["o-pulse", "cyan ring that grows 3 times: changed in the latest map version"],
+  ["o-focus", "Pulsing blue ring: working"],
+  ["o-pulse", "heavy cyan ring: changed in the latest map version"],
   ["o-hop", "cyan border: the current hop of the flow you follow"],
   ["o-selected", "heavy border: the node you clicked"],
 ];
@@ -96,11 +96,6 @@ const STYLE = `
 .smv-legend i.line { width: 22px; height: 0; border-radius: 0; border: 0; border-top: 2px solid var(--smv-edge); background: none; }
 .smv-legend i.assumed { border-top: 2px dashed var(--smv-amber); } .smv-legend i.hop { border-top-color: var(--smv-cyan); }
 .smv-legend em { font-style: normal; }
-.smv-legend b { font-size: 9px; font-weight: 700; letter-spacing: 0.06em; padding: 1px 6px; border-radius: 4px; border: 1.2px solid; }
-.smv-legend b.new { background: var(--smv-green); border-color: var(--smv-green); color: #fff; }
-.smv-legend b.changed { background: var(--smv-amber); border-color: var(--smv-amber); color: #1b1300; }
-.smv-legend b.impacted { border-color: var(--smv-muted); color: var(--smv-ink); }
-.smv-legend b.removed { border-color: var(--smv-red); color: var(--smv-red); }
 .smv-legend .row { flex-basis: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 18px; }
 .smv-legend .row > strong { font-weight: 600; color: var(--smv-ink); }
 .smv-legend i.o-focus { border-color: var(--smv-node-line); box-shadow: 0 0 0 2px var(--smv-card), 0 0 0 4px var(--smv-indigo); }
@@ -765,15 +760,6 @@ export function createGraphView(d3, container, options = {}) {
       box.append(item);
     }
     if (mode === "full") box.append(el("span", "", "Node fill: a blocked step wins, then all done, then any started step."));
-    const changes = el("div", "row");
-    changes.append(el("strong", "", "Change tags"));
-    for (const [status, text] of Object.entries(CHANGE_LABELS)) {
-      const item = el("span");
-      item.append(el("b", status, status.toUpperCase()), el("em", "", text));
-      changes.append(item);
-    }
-    changes.append(el("span", "", "No tag: not changed."));
-    box.append(changes);
     const outlines = el("div", "row");
     outlines.append(el("strong", "", "Outlines"));
     for (const [className, text] of OUTLINE_LABELS) {
